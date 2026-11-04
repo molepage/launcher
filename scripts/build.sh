@@ -5,12 +5,13 @@
 set -euo pipefail
 cd "${0:A:h}/.."
 
-MACOSX_DEPLOYMENT_TARGET=13.0 cargo build --release -p launcher-core
+MAC_TARGET=$(uname -m)
+MACOSX_DEPLOYMENT_TARGET=12.0 cargo build --release -p launcher-core
 
 APP=build/Launcher.app
 rm -rf "$APP"
 mkdir -p "$APP/Contents/MacOS" "$APP/Contents/Resources"
-swiftc -O -swift-version 5 -target arm64-apple-macos13.0 \
+swiftc -O -swift-version 5 -target "$MAC_TARGET-apple-macos12.0" \
   -import-objc-header shell-macos/bridge.h \
   shell-macos/*.swift \
   -L target/release -llauncher_core \
