@@ -37,6 +37,7 @@ final class LauncherPanel: NSPanel {
 
 private final class FlippedView: NSView {
     override var isFlipped: Bool { true }
+    override var mouseDownCanMoveWindow: Bool { true }
 }
 
 final class PanelController: NSObject, NSTextFieldDelegate, NSWindowDelegate {
@@ -47,6 +48,7 @@ final class PanelController: NSObject, NSTextFieldDelegate, NSWindowDelegate {
     private var generation = 0
     private var slowWork: DispatchWorkItem?
     private var lastWasSlow = false
+    private var hasPositioned = false
 
     private let width: CGFloat = 700
     private let barHeight: CGFloat = 58
@@ -63,6 +65,7 @@ final class PanelController: NSObject, NSTextFieldDelegate, NSWindowDelegate {
         panel.backgroundColor = .clear
         panel.isOpaque = false
         panel.hasShadow = true
+        panel.isMovableByWindowBackground = true
         panel.hidesOnDeactivate = false
         panel.isReleasedWhenClosed = false
 
@@ -70,9 +73,20 @@ final class PanelController: NSObject, NSTextFieldDelegate, NSWindowDelegate {
         bg.material = .popover
         bg.state = .active
         bg.blendingMode = .behindWindow
-        bg.wantsLayer = true
-        bg.layer?.cornerRadius = 14
-        bg.layer?.masksToBounds = true
+        // The vibrancy material is composited by the window server, so a layer
+        // cornerRadius doesn't clip it (leaves square corners). maskImage is the
+        // supported way to round a visual effect view; it stretches as a
+        // nine-part image, so it survives resizes.
+        let r: CGFloat = 14
+        bg.maskImage = {
+            let img = NSImage(size: NSSize(width: r * 2, height: r * 2), flipped: false) { rect in
+                NSColor.black.setFill()
+                NSBezierPath(roundedRect: rect, xRadius: r, yRadius: r).fill()
+                return true
+            }
+            img.capInsets = NSEdgeInsets(top: r, left: r, bottom: r, right: r)
+            return img
+        }()
         panel.contentView = bg
 
         let content = FlippedView(frame: bg.bounds)
@@ -120,7 +134,10 @@ final class PanelController: NSObject, NSTextFieldDelegate, NSWindowDelegate {
         DispatchQueue.global(qos: .utility).async { Core.refresh() }
         let mouse = NSEvent.mouseLocation
         let screen = NSScreen.screens.first { NSMouseInRect(mouse, $0.frame, false) } ?? NSScreen.main
-        if let vf = screen?.visibleFrame {
+        // Only auto-position on the first show; afterwards keep wherever the
+        // user dragged the panel to.
+        if !hasPositioned, let vf = screen?.visibleFrame {
+            hasPositioned = true
             let top = vf.maxY - vf.height * 0.2
             panel.setFrame(NSRect(x: vf.midX - width / 2, y: top - barHeight, width: width, height: barHeight),
                            display: false)
