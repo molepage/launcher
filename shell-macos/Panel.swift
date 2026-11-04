@@ -37,14 +37,37 @@ final class LauncherPanel: NSPanel {
 
 private final class FlippedView: NSView {
     override var isFlipped: Bool { true }
-    override var mouseDownCanMoveWindow: Bool { true }
+    var onMouseMoved: ((NSPoint) -> Void)?
+    private var moveTracking: NSTrackingArea?
+
+    override func updateTrackingAreas() {
+        super.updateTrackingAreas()
+        for area in trackingAreas where area.owner === self { removeTrackingArea(area) }
+        moveTracking = NSTrackingArea(rect: bounds,
+                                      options: [.mouseEnteredAndExited, .mouseMoved, .activeAlways, .inVisibleRect],
+                                      owner: self)
+        addTrackingArea(moveTracking!)
+    }
+
+    override func mouseEntered(with event: NSEvent) { onMouseMoved?(convert(event.locationInWindow, from: nil)) }
+    override func mouseMoved(with event: NSEvent) { onMouseMoved?(convert(event.locationInWindow, from: nil)) }
+    override func mouseExited(with event: NSEvent) { onMouseMoved?(NSPoint(x: -1, y: -1)) }
+
+    // Drag by hand: isMovableByWindowBackground trips an AppKit tracking-rect
+    // assertion on borderless, transparent panels (macOS 12).
+    override func mouseDown(with event: NSEvent) {
+        window?.performDrag(with: event)
+    }
 }
 
-final class PanelController: NSObject, NSTextFieldDelegate, NSWindowDelegate {
+final class PanelController: NSObject, NSTextFieldDelegate, NSWindowDelegate, NSMenuDelegate {
     let panel: LauncherPanel
     private let field = NSTextField()
     private let results = ResultsView()
     private let separator = NSBox()
+    private let gear = NSButton()
+    private let content = FlippedView()
+    private var menuOpen = false
     private var generation = 0
     private var slowWork: DispatchWorkItem?
     private var lastWasSlow = false
@@ -65,7 +88,6 @@ final class PanelController: NSObject, NSTextFieldDelegate, NSWindowDelegate {
         panel.backgroundColor = .clear
         panel.isOpaque = false
         panel.hasShadow = true
-        panel.isMovableByWindowBackground = true
         panel.hidesOnDeactivate = false
         panel.isReleasedWhenClosed = false
 
@@ -89,7 +111,8 @@ final class PanelController: NSObject, NSTextFieldDelegate, NSWindowDelegate {
         }()
         panel.contentView = bg
 
-        let content = FlippedView(frame: bg.bounds)
+        let content = self.content
+        content.frame = bg.bounds
         content.autoresizingMask = [.width, .height]
         bg.addSubview(content)
 
@@ -99,7 +122,7 @@ final class PanelController: NSObject, NSTextFieldDelegate, NSWindowDelegate {
         glass.contentTintColor = .secondaryLabelColor
         content.addSubview(glass)
 
-        field.frame = NSRect(x: 52, y: (barHeight - 30) / 2, width: width - 70, height: 30)
+        field.frame = NSRect(x: 52, y: (barHeight - 30) / 2, width: width - 100, height: 30)
         field.isBordered = false
         field.isBezeled = false
         field.drawsBackground = false
@@ -111,6 +134,21 @@ final class PanelController: NSObject, NSTextFieldDelegate, NSWindowDelegate {
         field.delegate = self
         content.addSubview(field)
 
+        gear.frame = NSRect(x: width - 42, y: (barHeight - 22) / 2, width: 22, height: 22)
+        gear.isBordered = false
+        gear.image = NSImage(systemSymbolName: "gearshape", accessibilityDescription: "Settings")?
+            .withSymbolConfiguration(.init(pointSize: 16, weight: .regular))
+        gear.contentTintColor = .secondaryLabelColor
+        gear.alphaValue = 0
+        gear.target = self
+        gear.action = #selector(showGearMenu)
+        gear.setButtonType(.momentaryChange)
+        content.addSubview(gear)
+        content.onMouseMoved = { [weak self] p in
+            guard let self, !self.menuOpen else { return }
+            self.gear.alphaValue = self.gear.frame.insetBy(dx: -8, dy: -8).contains(p) ? 1 : 0
+        }
+
         separator.boxType = .separator
         separator.frame = NSRect(x: 0, y: barHeight, width: width, height: 1)
         content.addSubview(separator)
@@ -120,6 +158,22 @@ final class PanelController: NSObject, NSTextFieldDelegate, NSWindowDelegate {
         content.addSubview(results)
 
         Icons.shared.onUpdate = { [weak self] in self?.results.needsDisplay = true }
+    }
+
+    // MARK: gear menu
+
+    @objc private func showGearMenu() {
+        let menu = NSMenu()
+        menu.delegate = self
+        menu.addItem(NSMenuItem(title: "Quit", action: #selector(NSApplication.terminate(_:)), keyEquivalent: "q"))
+        menuOpen = true
+        gear.alphaValue = 1
+        menu.popUp(positioning: nil, at: NSPoint(x: gear.frame.maxX, y: gear.frame.minY - 4), in: content)
+    }
+
+    func menuDidClose(_ menu: NSMenu) {
+        menuOpen = false
+        gear.alphaValue = 0
     }
 
     // MARK: showing and hiding
