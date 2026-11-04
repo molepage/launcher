@@ -1,0 +1,6 @@
+/target
+/build
+.DS_Store
+
+# Private research notes
+/docs/research/

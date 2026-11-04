@@ -1,0 +1,4 @@
+name = "Quit Applications"
+keyword = "quit"
+exec = "run.sh"
+description = "quit <app> — quit a running app"

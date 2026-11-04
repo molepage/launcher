@@ -1,0 +1,4 @@
+name = "Shell Command"
+keyword = "sh"
+exec = "run.sh"
+description = "sh <command> — run in Terminal, or silently and copy the output"
