@@ -28,7 +28,13 @@ struct Item: Decodable {
 struct Settings: Decodable {
     let hotkey: String
     let clipboardHotkey: String
+    let appDirs: [String]
+    let appearance: String
+    let systemLinks: [String]
+    let fileSearch: Bool
+    let searchDirs: [String]
     let errors: [String]
+    let dataDir: String
 }
 
 private struct QueryResult: Decodable {
@@ -84,5 +90,23 @@ enum Core {
     static func settings() -> Settings? {
         guard let d = take(lc_settings()) else { return nil }
         return try? decoder().decode(Settings.self, from: d)
+    }
+
+    /// Merge fields into config.toml and reload. Returns the fresh settings
+    /// and, on failure, an error message.
+    static func writeConfig(_ fields: [String: Any]) -> (settings: Settings?, error: String?) {
+        guard let json = try? JSONSerialization.data(withJSONObject: fields),
+              let str = String(data: json, encoding: .utf8) else {
+            return (nil, "bad config json")
+        }
+        guard let d = take(lc_write_config(str)), let data = String(data: d, encoding: .utf8),
+              let obj = try? JSONSerialization.jsonObject(with: Data(data.utf8)) as? [String: Any] else {
+            return (nil, "core unreachable")
+        }
+        if let err = obj["error"] as? String { return (nil, err) }
+        guard let s = try? decoder().decode(Settings.self, from: Data(data.utf8)) else {
+            return (nil, "unreadable settings response")
+        }
+        return (s, nil)
     }
 }

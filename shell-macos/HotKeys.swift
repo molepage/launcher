@@ -5,19 +5,27 @@ import Carbon
 
 enum HotKeys {
     private static var handlers: [UInt32: () -> Void] = [:]
-    private static var refs: [EventHotKeyRef] = []
+    private static var refs: [UInt32: EventHotKeyRef] = [:]
     private static var installed = false
 
     static func register(_ spec: String, id: UInt32, _ handler: @escaping () -> Void) -> Bool {
         guard let (code, mods) = parse(spec) else { return false }
+        unregister(id: id)
         installHandler()
         var ref: EventHotKeyRef?
         let hkID = EventHotKeyID(signature: OSType(0x4C4E_4348), id: id)  // 'LNCH'
         let status = RegisterEventHotKey(code, mods, hkID, GetApplicationEventTarget(), 0, &ref)
         guard status == noErr, let ref else { return false }
-        refs.append(ref)
+        refs[id] = ref
         handlers[id] = handler
         return true
+    }
+
+    static func unregister(id: UInt32) {
+        if let ref = refs.removeValue(forKey: id) {
+            UnregisterEventHotKey(ref)
+        }
+        handlers.removeValue(forKey: id)
     }
 
     private static func installHandler() {
@@ -42,6 +50,12 @@ enum HotKeys {
         "f1": 122, "f2": 120, "f3": 99, "f4": 118, "f5": 96, "f6": 97, "f7": 98, "f8": 100, "f9": 101,
         "f10": 109, "f11": 103, "f12": 111,
     ]
+
+    /// Inverse of `keys`: key code → the name used in config specs.
+    static func specName(keyCode: UInt16) -> String? {
+        for (name, code) in keys where UInt16(code) == keyCode { return name }
+        return nil
+    }
 
     /// "alt+space", "cmd+shift+v", "ctrl+opt+k" → (key code, Carbon modifiers).
     static func parse(_ spec: String) -> (UInt32, UInt32)? {

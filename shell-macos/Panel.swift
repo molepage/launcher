@@ -165,10 +165,40 @@ final class PanelController: NSObject, NSTextFieldDelegate, NSWindowDelegate, NS
     @objc private func showGearMenu() {
         let menu = NSMenu()
         menu.delegate = self
+        let settingsItem = NSMenuItem(title: "Settings…", action: #selector(openSettings), keyEquivalent: ",")
+        settingsItem.target = self
+        menu.addItem(settingsItem)
+        menu.addItem(.separator())
         menu.addItem(NSMenuItem(title: "Quit", action: #selector(NSApplication.terminate(_:)), keyEquivalent: "q"))
         menuOpen = true
         gear.alphaValue = 1
         menu.popUp(positioning: nil, at: NSPoint(x: gear.frame.maxX, y: gear.frame.minY - 4), in: content)
+    }
+
+    @objc private func openSettings() {
+        let sc = SettingsWindowController.shared
+        sc.reapplyAppearance = { [weak self] name in self?.applyAppearance(name) }
+        sc.reapplyHotkeys = { [weak self] in self?.reapplyHotkeys() }
+        sc.show()
+    }
+
+    /// Re-read the config hotkeys and re-register them.
+    private func reapplyHotkeys() {
+        guard let s = Core.settings() else { return }
+        if !HotKeys.register(s.hotkey, id: 1, { [weak self] in self?.toggle() }) {
+            NSLog("Launcher: couldn't register hotkey %@", s.hotkey)
+        }
+        if !s.clipboardHotkey.isEmpty {
+            if !HotKeys.register(s.clipboardHotkey, id: 2, { [weak self] in self?.toggle(prefill: "clip ") }) {
+                NSLog("Launcher: couldn't register clipboard hotkey %@", s.clipboardHotkey)
+            }
+        }
+    }
+
+    func applyAppearance(_ name: String) {
+        // App-wide so the settings window follows the panel.
+        NSApp.appearance = name == "light" ? NSAppearance(named: .aqua)
+            : name == "dark" ? NSAppearance(named: .darkAqua) : nil
     }
 
     func menuDidClose(_ menu: NSMenu) {
@@ -186,6 +216,7 @@ final class PanelController: NSObject, NSTextFieldDelegate, NSWindowDelegate, NS
 
     func show(prefill: String = "") {
         DispatchQueue.global(qos: .utility).async { Core.refresh() }
+        applyAppearance(Core.settings()?.appearance ?? "system")
         let mouse = NSEvent.mouseLocation
         let screen = NSScreen.screens.first { NSMouseInRect(mouse, $0.frame, false) } ?? NSScreen.main
         // Only auto-position on the first show; afterwards keep wherever the
@@ -238,6 +269,8 @@ final class PanelController: NSObject, NSTextFieldDelegate, NSWindowDelegate, NS
     private var snapshotting = false
 
     func windowDidResignKey(_ notification: Notification) {
+        // Stay visible while the settings window is up.
+        if SettingsWindowController.shared.window?.isVisible == true { return }
         if !snapshotting { hide() }
     }
 

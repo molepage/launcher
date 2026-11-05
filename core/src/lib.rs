@@ -103,10 +103,24 @@ pub extern "C" fn lc_refresh() {
     with_engine((), |e| e.refresh())
 }
 
-/// {"hotkey", "clipboard_hotkey", "errors": [...], "data_dir"}.
+/// {"hotkey", "clipboard_hotkey", "app_dirs", "appearance", "errors": [...],
+/// "data_dir"}.
 #[unsafe(no_mangle)]
 pub extern "C" fn lc_settings() -> *mut c_char {
     with_engine(std::ptr::null_mut(), |e| out(e.settings().to_string()))
+}
+
+/// Merge `config_json` fields into config.toml and reload. Returns the new
+/// settings JSON, or {"error": "..."}.
+#[unsafe(no_mangle)]
+pub unsafe extern "C" fn lc_write_config(config_json: *const c_char) -> *mut c_char {
+    let json = unsafe { arg(config_json) };
+    with_engine(std::ptr::null_mut(), |e| {
+        match serde_json::from_str::<serde_json::Value>(&json) {
+            Ok(fields) => out(e.write_config(&fields).to_string()),
+            Err(err) => out(serde_json::json!({ "error": format!("bad config json: {err}") }).to_string()),
+        }
+    })
 }
 
 #[unsafe(no_mangle)]

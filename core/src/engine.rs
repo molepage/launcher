@@ -71,6 +71,15 @@ fn url_encode(s: &str) -> String {
     out
 }
 
+/// System Settings panes the user can enable as launcher entries:
+/// (config anchor, display name, x-apple.systempreferences anchor).
+pub const SYSTEM_LINKS: &[(&str, &str, &str)] = &[
+    ("accessibility", "Accessibility", "com.apple.preference.security?Privacy_Accessibility"),
+    ("firewall", "Firewall", "com.apple.preference.security?Firewall"),
+    ("notifications", "Notifications", "com.apple.preference.notifications"),
+    ("login_items", "Login Items", "com.apple.LoginItems-Settings.extension"),
+];
+
 impl Engine {
     pub fn open(opts: Options) -> Result<Engine, String> {
         std::fs::create_dir_all(opts.data_dir.join("addons")).map_err(|e| e.to_string())?;
@@ -89,7 +98,6 @@ impl Engine {
             files: Arc::default(),
             indexing: Arc::default(),
         };
-        e.ensure_file_index();
         Ok(e)
     }
 
@@ -104,7 +112,6 @@ impl Engine {
     /// Rescan apps, config and add-ons. Cheap; the shell calls it whenever
     /// the window opens. Skipped if done in the last few seconds.
     pub fn refresh(&self) {
-        self.ensure_file_index();
         if self.state.read().unwrap().refreshed.elapsed() < Duration::from_secs(5) {
             return;
         }
@@ -112,22 +119,39 @@ impl Engine {
         *self.state.write().unwrap() = fresh;
     }
 
-    /// Start a background rebuild if there's no index or it's stale.
+    /// Start a background rebuild if there's no index, it's stale, or the
+    /// configured roots changed. Only called when the user actually searches
+    /// files, so nothing on disk is read unless file search is enabled.
     fn ensure_file_index(&self) {
+        let roots = self.search_roots();
         let stale = match &*self.files.read().unwrap() {
             None => true,
-            Some(ix) => ix.built.elapsed() > INDEX_MAX_AGE,
+            Some(ix) => ix.built.elapsed() > INDEX_MAX_AGE || ix.roots != roots,
         };
         if !stale || self.indexing.swap(true, Ordering::SeqCst) {
             return;
         }
         let (slot, flag) = (self.files.clone(), self.indexing.clone());
-        let roots = fileindex::default_roots(&self.opts.home);
         std::thread::spawn(move || {
             let ix = FileIndex::build(&roots);
             *slot.write().unwrap() = Some(Arc::new(ix));
             flag.store(false, Ordering::SeqCst);
         });
+    }
+
+    /// Folders to index: the user's choice, or home + iCloud by default.
+    fn search_roots(&self) -> Vec<PathBuf> {
+        let (enabled, dirs) = {
+            let st = self.state.read().unwrap();
+            (st.config.file_search, st.config.search_dirs.clone())
+        };
+        if !enabled {
+            return vec![];
+        }
+        if dirs.is_empty() {
+            return fileindex::default_roots(&self.opts.home);
+        }
+        dirs.iter().map(|d| expand_tilde(d, &self.opts.home).to_path_buf()).collect()
     }
 
     /// Search file names. `None` while the first index is still being built.
@@ -149,10 +173,34 @@ impl Engine {
         serde_json::json!({
             "hotkey": st.config.hotkey,
             "clipboard_hotkey": st.config.clipboard_hotkey,
+            "app_dirs": st.config.app_dirs,
+            "appearance": st.config.appearance,
+            "system_links": st.config.system_links,
+            "file_search": st.config.file_search,
+            "search_dirs": st.config.search_dirs,
             "errors": st.errors,
             "data_dir": self.opts.data_dir,
             "indexed_files": self.files.read().unwrap().as_ref().map(|ix| ix.len()),
         })
+    }
+
+    /// Merge `fields` into config.toml, reload state, and return the new
+    /// settings JSON (or an error string under "error").
+    pub fn write_config(&self, fields: &serde_json::Value) -> serde_json::Value {
+        let path = self.opts.data_dir.join("config.toml");
+        let saved = {
+            let st = self.state.read().unwrap();
+            st.config.write_fields(&path, fields)
+        };
+        match saved {
+            Ok(_) => {
+                // Bypass the refresh throttle: the user just saved.
+                self.state.write().unwrap().refreshed = Instant::now() - Duration::from_secs(10);
+                self.refresh();
+                self.settings()
+            }
+            Err(e) => serde_json::json!({ "error": e }),
+        }
     }
 
     fn screenshot_dir(&self) -> PathBuf {
@@ -206,6 +254,18 @@ impl Engine {
                 vec!["exit".into()],
             ),
         ];
+        for (anchor, title, pane) in SYSTEM_LINKS {
+            if st.config.system_links.iter().any(|l| l == anchor) {
+                v.push((
+                    Item::new(format!("sys:{anchor}"), *title, Action::OpenUrl {
+                        url: format!("x-apple.systempreferences:{pane}"),
+                    })
+                    .subtitle(format!("System Settings > {title}"))
+                    .icon(sym("gearshape.fill")),
+                    vec![title.to_lowercase()],
+                ));
+            }
+        }
         for ql in &st.config.quicklinks {
             let aliases = ql.keyword.iter().cloned().collect();
             let item = match (&ql.keyword, ql.is_search()) {
@@ -341,6 +401,10 @@ impl Engine {
         let rest = rest.trim();
         let kw = kw.to_lowercase();
         if kw == "f" {
+            if !self.state.read().unwrap().config.file_search {
+                return vec![hint("File search is off — enable it in Launcher Settings")];
+            }
+            self.ensure_file_index();
             return match self.search_files(rest) {
                 None => vec![hint("Still indexing files — try again in a moment")],
                 Some(items) if items.is_empty() => vec![hint("No matching files")],

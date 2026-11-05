@@ -51,6 +51,17 @@ pub struct Config {
     pub clipboard_hotkey: String,
     #[serde(default)]
     pub app_dirs: Vec<String>,
+    #[serde(default = "default_appearance")]
+    pub appearance: String,
+    /// Enabled System Settings deep links (anchors, see engine::SYSTEM_LINKS).
+    #[serde(default)]
+    pub system_links: Vec<String>,
+    /// File search ("f <name>"). Off = nothing on disk is read.
+    #[serde(default)]
+    pub file_search: bool,
+    /// Folders to index for file search; empty = home + iCloud Drive.
+    #[serde(default)]
+    pub search_dirs: Vec<String>,
     #[serde(default, rename = "quicklink")]
     pub quicklinks: Vec<Quicklink>,
 }
@@ -60,6 +71,9 @@ fn default_hotkey() -> String {
 }
 fn default_clip_hotkey() -> String {
     "cmd+shift+v".into()
+}
+fn default_appearance() -> String {
+    "system".into()
 }
 
 impl Default for Config {
@@ -76,12 +90,51 @@ impl Config {
             let _ = std::fs::write(path, DEFAULT);
         }
         match std::fs::read_to_string(path) {
-            Ok(s) => match toml::from_str(&s) {
-                Ok(c) => (c, None),
+            Ok(s) => match toml::from_str::<Config>(&s) {
+                Ok(mut c) => {
+                    if !["system", "light", "dark"].contains(&c.appearance.as_str()) {
+                        c.appearance = "system".into();
+                    }
+                    (c, None)
+                }
                 Err(e) => (Config::default(), Some(format!("config.toml: {e}"))),
             },
             Err(e) => (Config::default(), Some(format!("config.toml: {e}"))),
         }
+    }
+
+    /// Merge the given JSON fields over this config, write it back to
+    /// `path`, and return the saved config. Missing keys keep their value.
+    pub fn write_fields(&self, path: &Path, fields: &serde_json::Value) -> Result<Config, String> {
+        let mut c = self.clone();
+        if let Some(h) = fields.get("hotkey").and_then(|v| v.as_str()) {
+            c.hotkey = h.to_owned();
+        }
+        if let Some(h) = fields.get("clipboard_hotkey").and_then(|v| v.as_str()) {
+            c.clipboard_hotkey = h.to_owned();
+        }
+        if let Some(a) = fields.get("appearance").and_then(|v| v.as_str()) {
+            if ["system", "light", "dark"].contains(&a) {
+                c.appearance = a.to_owned();
+            }
+        }
+        if let Some(dirs) = fields.get("app_dirs").and_then(|v| v.as_array()) {
+            c.app_dirs = dirs.iter().filter_map(|d| d.as_str().map(String::from)).collect();
+        }
+        if let Some(links) = fields.get("system_links").and_then(|v| v.as_array()) {
+            c.system_links = links.iter().filter_map(|l| l.as_str().map(String::from)).collect();
+        }
+        if let Some(b) = fields.get("file_search").and_then(|v| v.as_bool()) {
+            c.file_search = b;
+        }
+        if let Some(dirs) = fields.get("search_dirs").and_then(|v| v.as_array()) {
+            c.search_dirs = dirs.iter().filter_map(|d| d.as_str().map(String::from)).collect();
+        }
+        let body = toml::to_string_pretty(&c).map_err(|e| format!("serialize config: {e}"))?;
+        let header = "# Launcher settings. Hotkey changes apply immediately; the rest\n\
+                      # is picked up the next time the window opens.\n\n";
+        std::fs::write(path, format!("{header}{body}")).map_err(|e| format!("write config: {e}"))?;
+        Ok(c)
     }
 }
 
@@ -95,6 +148,27 @@ mod tests {
         assert_eq!(c.hotkey, "alt+space");
         assert_eq!(c.quicklinks.len(), 3);
         assert!(c.quicklinks[0].is_search());
+    }
+
+    #[test]
+    fn write_fields_merges_and_keeps_unknown_keys() {
+        let d = tempfile::tempdir().unwrap();
+        let p = d.path().join("config.toml");
+        let (c, _) = Config::load(&p);
+        let fields: serde_json::Value =
+            serde_json::json!({"hotkey": "cmd+space", "app_dirs": ["~/Apps"], "appearance": "dark"});
+        let saved = c.write_fields(&p, &fields).unwrap();
+        assert_eq!(saved.hotkey, "cmd+space");
+        assert_eq!(saved.app_dirs, vec!["~/Apps".to_string()]);
+        assert_eq!(saved.appearance, "dark");
+        assert_eq!(saved.quicklinks.len(), 3);  // untouched
+        // Round-trip: what's on disk loads back identically.
+        let (reloaded, err) = Config::load(&p);
+        assert!(err.is_none());
+        assert_eq!(reloaded, saved);
+        // Invalid appearance values are ignored on write.
+        let bad = saved.write_fields(&p, &serde_json::json!({"appearance": "blue"})).unwrap();
+        assert_eq!(bad.appearance, "dark");
     }
 
     #[test]

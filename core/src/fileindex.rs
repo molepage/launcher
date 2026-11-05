@@ -34,6 +34,8 @@ pub struct FileIndex {
     names: String,
     nodes: Vec<Node>,
     pub built: Instant,
+    /// Roots the index was built from (to detect config changes).
+    pub roots: Vec<PathBuf>,
 }
 
 fn is_package(name: &str) -> bool {
@@ -42,7 +44,7 @@ fn is_package(name: &str) -> bool {
 
 impl FileIndex {
     pub fn build(roots: &[PathBuf]) -> FileIndex {
-        let mut ix = FileIndex { names: String::new(), nodes: Vec::new(), built: Instant::now() };
+        let mut ix = FileIndex { names: String::new(), nodes: Vec::new(), built: Instant::now(), roots: roots.to_vec() };
         for root in roots {
             if !root.is_dir() {
                 continue;
