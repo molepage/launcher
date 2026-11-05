@@ -4,12 +4,24 @@
 
 import AppKit
 
-/// Mirrors core/src/engine.rs SYSTEM_LINKS: (anchor, title, x-apple.systempreferences anchor).
-private let SYSTEM_LINKS: [(String, String, String)] = [
-    ("accessibility", "Accessibility", "com.apple.preference.security?Privacy_Accessibility"),
-    ("firewall", "Firewall", "com.apple.preference.security?Firewall"),
-    ("notifications", "Notifications", "com.apple.preference.notifications"),
-    ("login_items", "Login Items", "com.apple.LoginItems-Settings.extension"),
+/// Mirrors core/src/engine.rs SYSTEM_LINKS: (anchor, title, x-apple.systempreferences anchor, _).
+private let SYSTEM_LINKS: [(String, String, String, [String])] = [
+    ("accessibility", "Accessibility", "com.apple.preference.security?Privacy_Accessibility", []),
+    ("firewall", "Firewall", "com.apple.preference.security?Firewall", []),
+    ("notifications", "Notifications", "com.apple.preference.notifications", []),
+    ("login_items", "Login Items", "com.apple.LoginItems-Settings.extension", []),
+    ("privacy", "Privacy & Security", "com.apple.preference.security", []),
+    ("network", "Network", "com.apple.preference.network", []),
+    ("sound", "Sound", "com.apple.preference.sound", []),
+    ("displays", "Displays", "com.apple.preference.displays", []),
+    ("battery", "Battery", "com.apple.preference.battery", []),
+    ("keyboard", "Keyboard", "com.apple.preference.keyboard", []),
+    ("mouse", "Mouse", "com.apple.preference.mouse", []),
+    ("trackpad", "Trackpad", "com.apple.preference.trackpad", []),
+    ("printer", "Printers & Scanners", "com.apple.preference.printfax", []),
+    ("bluetooth", "Bluetooth", "com.apple.preference.bluetooth", []),
+    ("siri", "Siri & Spotlight", "com.apple.preference.siri", []),
+    ("desktop", "Desktop & Dock", "com.apple.preference.dock", []),
 ]
 
 /// Click to record a shortcut. Emits the same "cmd+shift+v" spec format
@@ -127,7 +139,7 @@ final class SettingsWindowController: NSWindowController, NSWindowDelegate, NSTa
     private var appearanceButtons: [NSButton] = []
 
     convenience init() {
-        let win = NSWindow(contentRect: NSRect(x: 0, y: 0, width: 470, height: 660),
+        let win = NSWindow(contentRect: NSRect(x: 0, y: 0, width: 470, height: 600),
                            styleMask: [.titled, .closable], backing: .buffered, defer: false)
         win.title = "Launcher Settings"
         win.isReleasedWhenClosed = false
@@ -142,9 +154,21 @@ final class SettingsWindowController: NSWindowController, NSWindowDelegate, NSTa
         settings = nil
     }
 
-    func show() {
+    /// Open next to the launcher panel (below it, or above when the space
+    /// below is too tight) instead of wherever the window manager pleases.
+    func show(panelFrame: NSRect? = nil) {
         if settings == nil { rebuild() }
         showWindow(nil)
+        if let pf = panelFrame, let win = window,
+           let screen = NSScreen.screens.first(where: { $0.frame.intersects(pf) }) ?? NSScreen.main {
+            let vis = screen.visibleFrame
+            let size = win.frame.size
+            var x = min(max(pf.midX - size.width / 2, vis.minX + 8), vis.maxX - size.width - 8)
+            var y = pf.minY - size.height - 12
+            if y < vis.minY { y = pf.maxY + 12 }
+            x = max(x, vis.minX + 8)
+            win.setFrameOrigin(NSPoint(x: x, y: y))
+        }
         window?.makeKeyAndOrderFront(nil)
         NSApp.activate(ignoringOtherApps: true)
     }
@@ -156,9 +180,9 @@ final class SettingsWindowController: NSWindowController, NSWindowDelegate, NSTa
         guard let s = settings else { return }
         folders = s.appDirs
         searchDirs = s.searchDirs
-        let content = NSView(frame: NSRect(x: 0, y: 0, width: 470, height: 660))
+        let content = NSView(frame: NSRect(x: 0, y: 0, width: 470, height: 600))
 
-        var y: CGFloat = 660
+        var y: CGFloat = 600
         func section(_ title: String) {
             let l = NSTextField(labelWithString: title.uppercased())
             l.font = .systemFont(ofSize: 11, weight: .semibold)
@@ -192,6 +216,13 @@ final class SettingsWindowController: NSWindowController, NSWindowDelegate, NSTa
         hotkeyLabel("Clipboard history", at: row2, in: content)
 
         y -= 14
+        section("macOS Settings")
+        let toggleRow = systemToggleRow()
+        toggleRow.frame.origin.y = y - 56
+        content.addSubview(toggleRow)
+        y -= 56
+
+        y -= 14
         section("Extra App Folders")
         let foldersHolder = folderList(height: 96, items: folders, tv: table)
         foldersHolder.frame.origin.y = y - 96
@@ -211,12 +242,6 @@ final class SettingsWindowController: NSWindowController, NSWindowDelegate, NSTa
         dirsHolder.frame.origin.y = y - 96
         content.addSubview(dirsHolder)
         y -= 96
-
-        y -= 14
-        section("macOS Settings")
-        let toggleRow = systemToggleRow()
-        toggleRow.frame.origin.y = y - 56
-        content.addSubview(toggleRow)
 
         window?.contentView = content
     }

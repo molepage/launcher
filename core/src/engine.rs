@@ -72,12 +72,24 @@ fn url_encode(s: &str) -> String {
 }
 
 /// System Settings panes the user can enable as launcher entries:
-/// (config anchor, display name, x-apple.systempreferences anchor).
-pub const SYSTEM_LINKS: &[(&str, &str, &str)] = &[
-    ("accessibility", "Accessibility", "com.apple.preference.security?Privacy_Accessibility"),
-    ("firewall", "Firewall", "com.apple.preference.security?Firewall"),
-    ("notifications", "Notifications", "com.apple.preference.notifications"),
-    ("login_items", "Login Items", "com.apple.LoginItems-Settings.extension"),
+/// (config anchor, display name, x-apple.systempreferences anchor, extra keywords).
+pub const SYSTEM_LINKS: &[(&str, &str, &str, &[&str])] = &[
+    ("accessibility", "Accessibility", "com.apple.preference.security?Privacy_Accessibility", &[]),
+    ("firewall", "Firewall", "com.apple.preference.security?Firewall", &[]),
+    ("notifications", "Notifications", "com.apple.preference.notifications", &[]),
+    ("login_items", "Login Items", "com.apple.LoginItems-Settings.extension", &["startup"]),
+    ("privacy", "Privacy & Security", "com.apple.preference.security", &["privacy"]),
+    ("network", "Network", "com.apple.preference.network", &["wifi", "wi-fi", "vpn"]),
+    ("sound", "Sound", "com.apple.preference.sound", &["audio", "volume"]),
+    ("displays", "Displays", "com.apple.preference.displays", &["monitor", "screen", "brightness"]),
+    ("battery", "Battery", "com.apple.preference.battery", &["energy"]),
+    ("keyboard", "Keyboard", "com.apple.preference.keyboard", &[]),
+    ("mouse", "Mouse", "com.apple.preference.mouse", &[]),
+    ("trackpad", "Trackpad", "com.apple.preference.trackpad", &[]),
+    ("printer", "Printers & Scanners", "com.apple.preference.printfax", &["printer", "scanner", "print"]),
+    ("bluetooth", "Bluetooth", "com.apple.preference.bluetooth", &[]),
+    ("siri", "Siri & Spotlight", "com.apple.preference.siri", &["spotlight", "siri"]),
+    ("desktop", "Desktop & Dock", "com.apple.preference.dock", &["dock", "hot corners"]),
 ];
 
 impl Engine {
@@ -254,15 +266,17 @@ impl Engine {
                 vec!["exit".into()],
             ),
         ];
-        for (anchor, title, pane) in SYSTEM_LINKS {
+        for (anchor, title, pane, keywords) in SYSTEM_LINKS {
             if st.config.system_links.iter().any(|l| l == anchor) {
+                let mut aliases: Vec<String> = keywords.iter().map(|k| k.to_string()).collect();
+                aliases.push(title.to_lowercase());
                 v.push((
                     Item::new(format!("sys:{anchor}"), *title, Action::OpenUrl {
                         url: format!("x-apple.systempreferences:{pane}"),
                     })
                     .subtitle(format!("System Settings > {title}"))
                     .icon(sym("gearshape.fill")),
-                    vec![title.to_lowercase()],
+                    aliases,
                 ));
             }
         }

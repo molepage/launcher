@@ -179,7 +179,7 @@ final class PanelController: NSObject, NSTextFieldDelegate, NSWindowDelegate, NS
         let sc = SettingsWindowController.shared
         sc.reapplyAppearance = { [weak self] name in self?.applyAppearance(name) }
         sc.reapplyHotkeys = { [weak self] in self?.reapplyHotkeys() }
-        sc.show()
+        sc.show(panelFrame: panel.frame)
     }
 
     /// Re-read the config hotkeys and re-register them.
