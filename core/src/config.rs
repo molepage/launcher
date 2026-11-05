@@ -95,6 +95,14 @@ impl Config {
                     if !["system", "light", "dark"].contains(&c.appearance.as_str()) {
                         c.appearance = "system".into();
                     }
+                    // Migrate configs saved when only four System Settings
+                    // panes existed: "all on" used to be those four.
+                    const OLD_FOUR: [&str; 4] = ["accessibility", "firewall", "notifications", "login_items"];
+                    if c.system_links.iter().filter(|l| OLD_FOUR.contains(&l.as_str())).count() == 4
+                        && c.system_links.len() == 4
+                    {
+                        c.system_links = crate::engine::SYSTEM_LINKS.iter().map(|l| l.0.to_string()).collect();
+                    }
                     (c, None)
                 }
                 Err(e) => (Config::default(), Some(format!("config.toml: {e}"))),
@@ -169,6 +177,21 @@ mod tests {
         // Invalid appearance values are ignored on write.
         let bad = saved.write_fields(&p, &serde_json::json!({"appearance": "blue"})).unwrap();
         assert_eq!(bad.appearance, "dark");
+    }
+
+    #[test]
+    fn old_four_system_links_expand_to_all() {
+        let d = tempfile::tempdir().unwrap();
+        let p = d.path().join("config.toml");
+        std::fs::write(&p, "system_links = [\"accessibility\", \"firewall\", \"notifications\", \"login_items\"]\n").unwrap();
+        let (c, err) = Config::load(&p);
+        assert!(err.is_none());
+        assert_eq!(c.system_links.len(), crate::engine::SYSTEM_LINKS.len());
+        // A deliberate subset that isn't the old four is left alone.
+        std::fs::write(&p, "system_links = [\"firewall\"]\n").unwrap();
+        let (c, err) = Config::load(&p);
+        assert!(err.is_none());
+        assert_eq!(c.system_links, vec!["firewall".to_string()]);
     }
 
     #[test]

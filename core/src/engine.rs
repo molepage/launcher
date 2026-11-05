@@ -71,25 +71,43 @@ fn url_encode(s: &str) -> String {
     out
 }
 
-/// System Settings panes the user can enable as launcher entries:
-/// (config anchor, display name, x-apple.systempreferences anchor, extra keywords).
-pub const SYSTEM_LINKS: &[(&str, &str, &str, &[&str])] = &[
-    ("accessibility", "Accessibility", "com.apple.preference.security?Privacy_Accessibility", &[]),
-    ("firewall", "Firewall", "com.apple.preference.security?Firewall", &[]),
-    ("notifications", "Notifications", "com.apple.preference.notifications", &[]),
-    ("login_items", "Login Items", "com.apple.LoginItems-Settings.extension", &["startup"]),
-    ("privacy", "Privacy & Security", "com.apple.preference.security", &["privacy"]),
-    ("network", "Network", "com.apple.preference.network", &["wifi", "wi-fi", "vpn"]),
-    ("sound", "Sound", "com.apple.preference.sound", &["audio", "volume"]),
-    ("displays", "Displays", "com.apple.preference.displays", &["monitor", "screen", "brightness"]),
-    ("battery", "Battery", "com.apple.preference.battery", &["energy"]),
-    ("keyboard", "Keyboard", "com.apple.preference.keyboard", &[]),
-    ("mouse", "Mouse", "com.apple.preference.mouse", &[]),
-    ("trackpad", "Trackpad", "com.apple.preference.trackpad", &[]),
-    ("printer", "Printers & Scanners", "com.apple.preference.printfax", &["printer", "scanner", "print"]),
-    ("bluetooth", "Bluetooth", "com.apple.preference.bluetooth", &[]),
-    ("siri", "Siri & Spotlight", "com.apple.preference.siri", &["spotlight", "siri"]),
-    ("desktop", "Desktop & Dock", "com.apple.preference.dock", &["dock", "hot corners"]),
+/// System Settings panes the user can enable as launcher entries.
+/// (config anchor, display name, URL-scheme anchor or None, preference-pane
+/// id for the AppleScript fallback, extra keywords). Several panes don't
+/// support the x-apple.systempreferences URL scheme and need osascript.
+pub const SYSTEM_LINKS: &[(&str, &str, Option<&str>, &str, &[&str])] = &[
+    ("accessibility", "Accessibility", Some("com.apple.preference.security?Privacy_Accessibility"), "", &[]),
+    ("firewall", "Firewall", Some("com.apple.preference.security?Firewall"), "", &[]),
+    ("filevault", "FileVault", Some("com.apple.preference.security?FDE"), "", &["encryption"]),
+    ("privacy", "Privacy & Security", Some("com.apple.preference.security"), "", &["privacy", "permissions", "camera", "microphone"]),
+    ("notifications", "Notifications", Some("com.apple.preference.notifications"), "", &["focus", "do not disturb"]),
+    ("login_items", "Login Items", Some("com.apple.LoginItems-Settings.extension"), "", &["startup"]),
+    ("battery", "Battery", Some("com.apple.preference.battery"), "", &["energy", "power"]),
+    ("softwareupdate", "Software Update", Some("com.apple.preferences.softwareupdate"), "", &["update"]),
+    ("touchid", "Touch ID & Password", Some("com.apple.preferences.password"), "", &["touch id", "password", "apple watch"]),
+    ("sharing", "Sharing", Some("com.apple.preferences.sharing"), "", &["share", "airdrop"]),
+    ("screentime", "Screen Time", Some("com.apple.preference.screentime"), "", &[]),
+    ("siri", "Siri", Some("com.apple.preference.speech"), "", &[]),
+    ("language", "Language & Region", Some("com.apple.Localization"), "", &["language", "region"]),
+    ("passwords", "Passwords", Some("com.apple.Passwords"), "", &[]),
+    ("profiles", "Profiles", Some("com.apple.preferences.configurationprofiles"), "", &["mdm"]),
+    ("spotlight", "Spotlight", None, "com.apple.preference.spotlight", &["search", "exclusion"]),
+    ("network", "Network", None, "com.apple.preference.network", &["wifi", "wi-fi", "vpn", "ethernet", "dns"]),
+    ("bluetooth", "Bluetooth", None, "com.apple.preferences.Bluetooth", &[]),
+    ("sound", "Sound", None, "com.apple.preference.sound", &["audio", "volume", "output", "input"]),
+    ("displays", "Displays", None, "com.apple.preference.displays", &["monitor", "screen", "brightness", "resolution"]),
+    ("keyboard", "Keyboard", None, "com.apple.preference.keyboard", &["shortcuts", "text replacement"]),
+    ("mouse", "Mouse", None, "com.apple.preference.mouse", &[]),
+    ("trackpad", "Trackpad", None, "com.apple.preference.trackpad", &["gesture"]),
+    ("printer", "Printers & Scanners", None, "com.apple.preference.printfax", &["printer", "scanner", "print"]),
+    ("screensaver", "Screen Saver", None, "com.apple.preference.desktopscreeneffect", &["screensaver", "desktop", "wallpaper"]),
+    ("dock", "Dock & Menu Bar", None, "com.apple.preference.dock", &["dock", "menu bar", "hot corners"]),
+    ("missioncontrol", "Mission Control", None, "com.apple.preference.expose", &["mission control", "spaces", "hot corners"]),
+    ("datetime", "Date & Time", None, "com.apple.preference.datetime", &["clock", "date", "time", "timezone"]),
+    ("timemachine", "Time Machine", None, "com.apple.prefs.backup", &["backup"]),
+    ("startupdisk", "Startup Disk", None, "com.apple.preference.startupdisk", &["boot", "startup disk"]),
+    ("users", "Users & Groups", None, "com.apple.preferences.users", &["users", "groups", "account"]),
+    ("general", "General", None, "com.apple.preference.general", &["default browser", "appearance"]),
 ];
 
 impl Engine {
@@ -266,16 +284,26 @@ impl Engine {
                 vec!["exit".into()],
             ),
         ];
-        for (anchor, title, pane, keywords) in SYSTEM_LINKS {
+        for (anchor, title, url, pane, keywords) in SYSTEM_LINKS {
             if st.config.system_links.iter().any(|l| l == anchor) {
                 let mut aliases: Vec<String> = keywords.iter().map(|k| k.to_string()).collect();
                 aliases.push(title.to_lowercase());
+                let action = match url {
+                    Some(u) => Action::OpenUrl { url: format!("x-apple.systempreferences:{u}") },
+                    None => Action::Run {
+                        argv: vec![
+                            "osascript".into(),
+                            "-e".into(),
+                            format!(
+                                "tell application \"System Preferences\"\nactivate\nreveal pane id \"{pane}\"\nend tell"
+                            ),
+                        ],
+                    },
+                };
                 v.push((
-                    Item::new(format!("sys:{anchor}"), *title, Action::OpenUrl {
-                        url: format!("x-apple.systempreferences:{pane}"),
-                    })
-                    .subtitle(format!("System Settings > {title}"))
-                    .icon(sym("gearshape.fill")),
+                    Item::new(format!("sys:{anchor}"), *title, action)
+                        .subtitle(format!("System Settings > {title}"))
+                        .icon(sym("gearshape.fill")),
                     aliases,
                 ));
             }

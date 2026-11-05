@@ -4,24 +4,40 @@
 
 import AppKit
 
-/// Mirrors core/src/engine.rs SYSTEM_LINKS: (anchor, title, x-apple.systempreferences anchor, _).
-private let SYSTEM_LINKS: [(String, String, String, [String])] = [
-    ("accessibility", "Accessibility", "com.apple.preference.security?Privacy_Accessibility", []),
-    ("firewall", "Firewall", "com.apple.preference.security?Firewall", []),
-    ("notifications", "Notifications", "com.apple.preference.notifications", []),
-    ("login_items", "Login Items", "com.apple.LoginItems-Settings.extension", []),
-    ("privacy", "Privacy & Security", "com.apple.preference.security", []),
-    ("network", "Network", "com.apple.preference.network", []),
-    ("sound", "Sound", "com.apple.preference.sound", []),
-    ("displays", "Displays", "com.apple.preference.displays", []),
-    ("battery", "Battery", "com.apple.preference.battery", []),
-    ("keyboard", "Keyboard", "com.apple.preference.keyboard", []),
-    ("mouse", "Mouse", "com.apple.preference.mouse", []),
-    ("trackpad", "Trackpad", "com.apple.preference.trackpad", []),
-    ("printer", "Printers & Scanners", "com.apple.preference.printfax", []),
-    ("bluetooth", "Bluetooth", "com.apple.preference.bluetooth", []),
-    ("siri", "Siri & Spotlight", "com.apple.preference.siri", []),
-    ("desktop", "Desktop & Dock", "com.apple.preference.dock", []),
+/// Mirrors the anchors/titles of core/src/engine.rs SYSTEM_LINKS.
+private let SYSTEM_LINKS: [(String, String)] = [
+    ("accessibility", "Accessibility"),
+    ("firewall", "Firewall"),
+    ("filevault", "FileVault"),
+    ("privacy", "Privacy & Security"),
+    ("notifications", "Notifications"),
+    ("login_items", "Login Items"),
+    ("battery", "Battery"),
+    ("softwareupdate", "Software Update"),
+    ("touchid", "Touch ID & Password"),
+    ("sharing", "Sharing"),
+    ("screentime", "Screen Time"),
+    ("siri", "Siri"),
+    ("language", "Language & Region"),
+    ("passwords", "Passwords"),
+    ("profiles", "Profiles"),
+    ("spotlight", "Spotlight"),
+    ("network", "Network"),
+    ("bluetooth", "Bluetooth"),
+    ("sound", "Sound"),
+    ("displays", "Displays"),
+    ("keyboard", "Keyboard"),
+    ("mouse", "Mouse"),
+    ("trackpad", "Trackpad"),
+    ("printer", "Printers & Scanners"),
+    ("screensaver", "Screen Saver"),
+    ("dock", "Dock & Menu Bar"),
+    ("missioncontrol", "Mission Control"),
+    ("datetime", "Date & Time"),
+    ("timemachine", "Time Machine"),
+    ("startupdisk", "Startup Disk"),
+    ("users", "Users & Groups"),
+    ("general", "General"),
 ]
 
 /// Click to record a shortcut. Emits the same "cmd+shift+v" spec format
