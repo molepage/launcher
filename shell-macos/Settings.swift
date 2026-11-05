@@ -216,14 +216,22 @@ final class SettingsWindowController: NSWindowController, NSWindowDelegate, NSTa
         hotkeyLabel("Clipboard history", at: row2, in: content)
 
         y -= 14
-        section("macOS Settings")
+        section("Index Settings")
         let toggleRow = systemToggleRow()
         toggleRow.frame.origin.y = y - 56
         content.addSubview(toggleRow)
         y -= 56
 
-        y -= 14
-        section("Extra App Folders")
+        let appsTitle = NSTextField(labelWithString: "Extra App Folders")
+        appsTitle.font = .systemFont(ofSize: 13, weight: .medium)
+        appsTitle.frame = NSRect(x: 20, y: y - 20, width: 300, height: 18)
+        let appsSub = NSTextField(labelWithString: "Folders beyond the standard ones to scan for apps")
+        appsSub.font = .systemFont(ofSize: 11)
+        appsSub.textColor = .secondaryLabelColor
+        appsSub.frame = NSRect(x: 20, y: y - 36, width: 360, height: 16)
+        content.addSubview(appsTitle)
+        content.addSubview(appsSub)
+        y -= 40
         let foldersHolder = folderList(height: 96, items: folders, tv: table)
         foldersHolder.frame.origin.y = y - 96
         content.addSubview(foldersHolder)
