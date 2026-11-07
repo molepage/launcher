@@ -208,6 +208,7 @@ impl Engine {
             "system_links": st.config.system_links,
             "file_search": st.config.file_search,
             "search_dirs": st.config.search_dirs,
+            "cat": st.config.cat,
             "errors": st.errors,
             "data_dir": self.opts.data_dir,
             "indexed_files": self.files.read().unwrap().as_ref().map(|ix| ix.len()),

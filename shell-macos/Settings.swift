@@ -137,6 +137,12 @@ final class HotkeyRecorder: NSView {
     }
 }
 
+/// Standard-coordinate content inside a flipped scroll document view, so the
+/// scroll view starts at the top of the settings instead of the bottom.
+private final class FlippedContainer: NSView {
+    override var isFlipped: Bool { true }
+}
+
 final class SettingsWindowController: NSWindowController, NSWindowDelegate, NSTableViewDataSource, NSTableViewDelegate {
     static let shared = SettingsWindowController()
 
@@ -144,6 +150,8 @@ final class SettingsWindowController: NSWindowController, NSWindowDelegate, NSTa
     var reapplyHotkeys: (() -> Void)?
     /// Apply the configured appearance to the panel (set by the panel).
     var reapplyAppearance: ((String) -> Void)?
+    /// Show or hide the cat (set by the panel).
+    var reapplyCat: ((Bool) -> Void)?
 
     private var settings: Settings?
     private var folders: [String] = []
@@ -175,6 +183,15 @@ final class SettingsWindowController: NSWindowController, NSWindowDelegate, NSTa
     func show(panelFrame: NSRect? = nil) {
         if settings == nil { rebuild() }
         showWindow(nil)
+        if let win = window {
+            // Never taller than the screen; the content scrolls instead.
+            if let screen = NSScreen.screens.first(where: { $0.frame.intersects(panelFrame ?? win.frame) }) ?? NSScreen.main {
+                let maxH = screen.visibleFrame.height - 24
+                if win.frame.height > maxH {
+                    win.setContentSize(NSSize(width: win.frame.width, height: maxH))
+                }
+            }
+        }
         if let pf = panelFrame, let win = window,
            let screen = NSScreen.screens.first(where: { $0.frame.intersects(pf) }) ?? NSScreen.main {
             let vis = screen.visibleFrame
@@ -215,6 +232,15 @@ final class SettingsWindowController: NSWindowController, NSWindowDelegate, NSTa
         ap.spacing = 16
         ap.frame = NSRect(x: 20, y: reserve(24), width: 430, height: 24)
         content.addSubview(ap)
+
+        y -= 10
+        let catToggle = systemToggleRow(title: "Sleeping Cat",
+                                        subtitle: "A pixel-art cat sleeps on top of the search box",
+                                        on: s.cat,
+                                        action: #selector(catToggled(_:)))
+        catToggle.frame.origin.y = y - 56
+        content.addSubview(catToggle)
+        y -= 56
 
         y -= 14
         section("Hotkeys")
@@ -267,7 +293,19 @@ final class SettingsWindowController: NSWindowController, NSWindowDelegate, NSTa
         content.addSubview(dirsHolder)
         y -= 96
 
-        window?.contentView = content
+        // Whatever the sections added up to, make it scrollable: the content
+        // view keeps its top-down coordinates, the flipped container is only
+        // tall enough to hold it plus a bottom margin.
+        let docHeight = 600 - y + 16
+        let container = FlippedContainer(frame: NSRect(x: 0, y: 0, width: 470, height: docHeight))
+        content.frame = NSRect(x: 0, y: 0, width: 470, height: 600)
+        container.addSubview(content)
+        let scroll = NSScrollView(frame: NSRect(x: 0, y: 0, width: 470, height: 600))
+        scroll.documentView = container
+        scroll.hasVerticalScroller = true
+        scroll.autohidesScrollers = true
+        scroll.drawsBackground = false
+        window?.contentView = scroll
     }
 
     private func hotkeyLabel(_ text: String, at y: CGFloat, in view: NSView) {
@@ -374,6 +412,11 @@ final class SettingsWindowController: NSWindowController, NSWindowDelegate, NSTa
     @objc private func systemToggleChanged(_ sender: NSSwitch) {
         let links = sender.state == .on ? SYSTEM_LINKS.map(\.0) : []
         save(["system_links": links], then: { Core.refresh() })
+    }
+
+    @objc private func catToggled(_ sender: NSSwitch) {
+        let on = sender.state == .on
+        save(["cat": on], then: { [weak self] in self?.reapplyCat?(on) })
     }
 
     @objc private func fileSearchToggled(_ sender: NSSwitch) {

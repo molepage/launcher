@@ -33,6 +33,7 @@ struct Settings: Decodable {
     let systemLinks: [String]
     let fileSearch: Bool
     let searchDirs: [String]
+    let cat: Bool
     let errors: [String]
     let dataDir: String
 }

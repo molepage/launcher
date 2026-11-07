@@ -35,6 +35,16 @@ final class LauncherPanel: NSPanel {
     }
 }
 
+// NSImageView plays animated GIFs on its own; this just keeps upscaled
+// pixels crisp instead of blurry.
+private final class PixelImageView: NSImageView {
+    override func hitTest(_ point: NSPoint) -> NSView? { nil }
+    override func draw(_ dirtyRect: NSRect) {
+        NSGraphicsContext.current?.imageInterpolation = .none
+        super.draw(dirtyRect)
+    }
+}
+
 private final class FlippedView: NSView {
     override var isFlipped: Bool { true }
     var onMouseMoved: ((NSPoint) -> Void)?
@@ -72,6 +82,7 @@ final class PanelController: NSObject, NSTextFieldDelegate, NSWindowDelegate, NS
     private var slowWork: DispatchWorkItem?
     private var lastWasSlow = false
     private var hasPositioned = false
+    private var catWindow: NSWindow!
 
     private let width: CGFloat = 700
     private let barHeight: CGFloat = 58
@@ -121,6 +132,25 @@ final class PanelController: NSObject, NSTextFieldDelegate, NSWindowDelegate, NS
             .withSymbolConfiguration(.init(pointSize: 18, weight: .regular))
         glass.contentTintColor = .secondaryLabelColor
         content.addSubview(glass)
+
+        // The cat sleeps on the roof: a separate transparent child window
+        // hovering on the panel's top edge, since a window can't draw above
+        // its own bounds. Child windows follow the parent when dragged.
+        catWindow = NSWindow(contentRect: NSRect(x: 0, y: 0, width: 64, height: 47),
+                             styleMask: [.borderless], backing: .buffered, defer: false)
+        catWindow.isOpaque = false
+        catWindow.backgroundColor = .clear
+        catWindow.hasShadow = false
+        catWindow.ignoresMouseEvents = true
+        catWindow.level = panel.level
+        catWindow.collectionBehavior = [.canJoinAllSpaces, .fullScreenAuxiliary, .ignoresCycle]
+        if let catURL = Bundle.main.url(forResource: "sleeping-cat", withExtension: "gif", subdirectory: "Assets"),
+           let catImage = NSImage(contentsOf: catURL) {
+            let cat = PixelImageView(frame: NSRect(x: 0, y: 0, width: 64, height: 47))
+            cat.image = catImage
+            catWindow.contentView = cat
+            panel.addChildWindow(catWindow, ordered: .above)
+        }
 
         field.frame = NSRect(x: 52, y: (barHeight - 30) / 2, width: width - 100, height: 30)
         field.isBordered = false
@@ -178,6 +208,7 @@ final class PanelController: NSObject, NSTextFieldDelegate, NSWindowDelegate, NS
     @objc private func openSettings() {
         let sc = SettingsWindowController.shared
         sc.reapplyAppearance = { [weak self] name in self?.applyAppearance(name) }
+        sc.reapplyCat = { [weak self] on in self?.applyCat(enabled: on) }
         sc.reapplyHotkeys = { [weak self] in self?.reapplyHotkeys() }
         sc.show(panelFrame: panel.frame)
     }
@@ -214,6 +245,23 @@ final class PanelController: NSObject, NSTextFieldDelegate, NSWindowDelegate, NS
         if isVisible && field.stringValue == prefill { hide() } else { show(prefill: prefill) }
     }
 
+    /// Put the cat window on the panel's roof, centered at 4/5 of the width.
+    private func positionCat() {
+        let f = panel.frame
+        catWindow.setFrameOrigin(NSPoint(x: f.minX + width * 0.8 - 32, y: f.maxY - 5))
+    }
+
+    /// Show or hide the cat (settings toggle).
+    func applyCat(enabled: Bool) {
+        if enabled {
+            positionCat()
+            if catWindow.parent == nil { panel.addChildWindow(catWindow, ordered: .above) }
+        } else if catWindow.parent != nil {
+            panel.removeChildWindow(catWindow)
+            catWindow.orderOut(nil)
+        }
+    }
+
     func show(prefill: String = "") {
         DispatchQueue.global(qos: .utility).async { Core.refresh() }
         applyAppearance(Core.settings()?.appearance ?? "system")
@@ -228,6 +276,8 @@ final class PanelController: NSObject, NSTextFieldDelegate, NSWindowDelegate, NS
                            display: false)
         }
         setQuery(prefill)
+        applyCat(enabled: Core.settings()?.cat ?? true)
+        positionCat()
         panel.makeKeyAndOrderFront(nil)
         panel.makeFirstResponder(field)
         moveCursorToEnd()
@@ -284,6 +334,7 @@ final class PanelController: NSObject, NSTextFieldDelegate, NSWindowDelegate, NS
         separator.isHidden = rows == 0
         results.frame = NSRect(x: 0, y: barHeight + 6, width: width, height: CGFloat(rows) * ResultsView.rowHeight)
         panel.setFrame(f, display: true)
+        positionCat()
     }
 
     // MARK: querying

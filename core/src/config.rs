@@ -62,6 +62,9 @@ pub struct Config {
     /// Folders to index for file search; empty = home + iCloud Drive.
     #[serde(default)]
     pub search_dirs: Vec<String>,
+    /// The sleeping cat on top of the search box.
+    #[serde(default = "default_cat")]
+    pub cat: bool,
     #[serde(default, rename = "quicklink")]
     pub quicklinks: Vec<Quicklink>,
 }
@@ -74,6 +77,9 @@ fn default_clip_hotkey() -> String {
 }
 fn default_appearance() -> String {
     "system".into()
+}
+fn default_cat() -> bool {
+    true
 }
 
 impl Default for Config {

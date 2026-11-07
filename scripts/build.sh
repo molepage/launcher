@@ -19,6 +19,7 @@ swiftc -O -swift-version 5 -target "$MAC_TARGET-apple-macos12.0" \
   -o "$APP/Contents/MacOS/Launcher"
 cp shell-macos/Info.plist "$APP/Contents/"
 cp -R addons "$APP/Contents/Resources/addons"
+cp -R shell-macos/Assets "$APP/Contents/Resources/Assets"
 
 # Sign with a real identity if there is one (keeps Accessibility permission
 # across rebuilds); otherwise ad-hoc.
