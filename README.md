@@ -47,6 +47,26 @@ run. It holds hotkeys, extra app folders and quicklinks. Type `settings` in
 the launcher to open it. Hotkey changes need a restart ("Quit Launcher",
 then open it again).
 
+## Changes from the original launcher
+
+**Requirements**: macOS 12 or later.
+
+**Settings window**
+- A gear button appears when you hover over the search bar, opening a settings window
+- Choose light, dark, or system appearance
+- Set or change the global hotkeys for the launcher and clipboard history
+- Add extra folders to scan for apps
+- Toggle file search on/off and choose which folders it indexes
+- Toggle System Settings search: type things like "firewall" to jump straight to the right pane
+- Everything saves instantly and applies live; the window scrolls on small screens
+
+**Search bar polish**
+- Rounded corners and the panel can be dragged anywhere on screen
+
+**A sleeping cat**
+- A pixel-art cat sleeps on top of the search box while you type
+- It can be turned off in settings
+
 ## Add-ons
 
 An add-on is a folder in `~/Library/Application Support/Launcher/addons/`
