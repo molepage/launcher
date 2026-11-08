@@ -15,6 +15,7 @@ pub mod learn;
 pub mod matcher;
 pub mod runner;
 pub mod sources;
+pub mod syslinks;
 
 use engine::{Engine, Options};
 use std::ffi::{CStr, CString, c_char};
@@ -42,7 +43,8 @@ fn with_engine<T>(default: T, f: impl FnOnce(&Engine) -> T) -> T {
     }
 }
 
-/// Start the core. `options_json`: {"data_dir", "home", "screenshot_dir"?}.
+/// Start the core. `options_json`: {"data_dir", "home", "screenshot_dir"?,
+/// "os_major"?}.
 /// Returns NULL on success, or an error message (free it).
 #[unsafe(no_mangle)]
 pub unsafe extern "C" fn lc_init(options_json: *const c_char) -> *mut c_char {
@@ -100,7 +102,21 @@ pub unsafe extern "C" fn lc_clipboard_add(text: *const c_char, app: *const c_cha
 /// Rescan apps, config and add-ons (throttled).
 #[unsafe(no_mangle)]
 pub extern "C" fn lc_refresh() {
-    with_engine((), |e| e.refresh())
+    with_engine((), |e| e.refresh(false))
+}
+
+/// Anchors and titles of the built-in System Settings entries visible on
+/// this OS: [{"anchor", "title"}, ...]. The settings window's enable-all
+/// toggle needs the full list.
+#[unsafe(no_mangle)]
+pub extern "C" fn lc_system_links() -> *mut c_char {
+    with_engine(std::ptr::null_mut(), |e| {
+        let links: Vec<_> = e.system_link_anchors()
+            .into_iter()
+            .map(|(anchor, title)| serde_json::json!({ "anchor": anchor, "title": title }))
+            .collect();
+        out(serde_json::to_string(&links).unwrap_or_default())
+    })
 }
 
 /// {"hotkey", "clipboard_hotkey", "app_dirs", "appearance", "errors": [...],

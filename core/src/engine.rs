@@ -10,6 +10,7 @@ use crate::learn::{Boost, Learner};
 use crate::matcher::NameMatcher;
 use crate::runner::Runner;
 use crate::sources::{self, ago, expand_tilde, now};
+use crate::syslinks;
 use rusqlite::Connection;
 use serde::{Deserialize, Serialize};
 use std::path::PathBuf;
@@ -26,6 +27,15 @@ pub struct Options {
     /// Where screenshots are saved; defaults to ~/Desktop.
     #[serde(default)]
     pub screenshot_dir: Option<PathBuf>,
+    /// macOS major version, for gating System Settings entries that only
+    /// exist in some releases. None = unknown, show everything.
+    #[serde(default)]
+    pub os_major: Option<u32>,
+    /// App folders to scan. None = the standard system folders plus
+    /// ~/Applications and config app_dirs. Tests set this so they never
+    /// touch the real machine's /Applications.
+    #[serde(default)]
+    pub app_roots: Option<Vec<PathBuf>>,
 }
 
 #[derive(Debug, Serialize, PartialEq)]
@@ -71,44 +81,7 @@ fn url_encode(s: &str) -> String {
     out
 }
 
-/// System Settings panes the user can enable as launcher entries.
-/// (config anchor, display name, URL-scheme anchor or None, preference-pane
-/// id for the AppleScript fallback, extra keywords). Several panes don't
-/// support the x-apple.systempreferences URL scheme and need osascript.
-pub const SYSTEM_LINKS: &[(&str, &str, Option<&str>, &str, &[&str])] = &[
-    ("accessibility", "Accessibility", Some("com.apple.preference.security?Privacy_Accessibility"), "", &[]),
-    ("firewall", "Firewall", Some("com.apple.preference.security?Firewall"), "", &[]),
-    ("filevault", "FileVault", Some("com.apple.preference.security?FDE"), "", &["encryption"]),
-    ("privacy", "Privacy & Security", Some("com.apple.preference.security"), "", &["privacy", "permissions", "camera", "microphone"]),
-    ("notifications", "Notifications", Some("com.apple.preference.notifications"), "", &["focus", "do not disturb"]),
-    ("login_items", "Login Items", Some("com.apple.LoginItems-Settings.extension"), "", &["startup"]),
-    ("battery", "Battery", Some("com.apple.preference.battery"), "", &["energy", "power"]),
-    ("softwareupdate", "Software Update", Some("com.apple.preferences.softwareupdate"), "", &["update"]),
-    ("touchid", "Touch ID & Password", Some("com.apple.preferences.password"), "", &["touch id", "password", "apple watch"]),
-    ("sharing", "Sharing", Some("com.apple.preferences.sharing"), "", &["share", "airdrop"]),
-    ("screentime", "Screen Time", Some("com.apple.preference.screentime"), "", &[]),
-    ("siri", "Siri", Some("com.apple.preference.speech"), "", &[]),
-    ("language", "Language & Region", Some("com.apple.Localization"), "", &["language", "region"]),
-    ("passwords", "Passwords", Some("com.apple.Passwords"), "", &[]),
-    ("profiles", "Profiles", Some("com.apple.preferences.configurationprofiles"), "", &["mdm"]),
-    ("spotlight", "Spotlight", None, "com.apple.preference.spotlight", &["search", "exclusion"]),
-    ("network", "Network", None, "com.apple.preference.network", &["wifi", "wi-fi", "vpn", "ethernet", "dns"]),
-    ("bluetooth", "Bluetooth", None, "com.apple.preferences.Bluetooth", &[]),
-    ("sound", "Sound", None, "com.apple.preference.sound", &["audio", "volume", "output", "input"]),
-    ("displays", "Displays", None, "com.apple.preference.displays", &["monitor", "screen", "brightness", "resolution"]),
-    ("keyboard", "Keyboard", None, "com.apple.preference.keyboard", &["shortcuts", "text replacement"]),
-    ("mouse", "Mouse", None, "com.apple.preference.mouse", &[]),
-    ("trackpad", "Trackpad", None, "com.apple.preference.trackpad", &["gesture"]),
-    ("printer", "Printers & Scanners", None, "com.apple.preference.printfax", &["printer", "scanner", "print"]),
-    ("screensaver", "Screen Saver", None, "com.apple.preference.desktopscreeneffect", &["screensaver", "desktop", "wallpaper"]),
-    ("dock", "Dock & Menu Bar", None, "com.apple.preference.dock", &["dock", "menu bar", "hot corners"]),
-    ("missioncontrol", "Mission Control", None, "com.apple.preference.expose", &["mission control", "spaces", "hot corners"]),
-    ("datetime", "Date & Time", None, "com.apple.preference.datetime", &["clock", "date", "time", "timezone"]),
-    ("timemachine", "Time Machine", None, "com.apple.prefs.backup", &["backup"]),
-    ("startupdisk", "Startup Disk", None, "com.apple.preference.startupdisk", &["boot", "startup disk"]),
-    ("users", "Users & Groups", None, "com.apple.preferences.users", &["users", "groups", "account"]),
-    ("general", "General", None, "com.apple.preference.general", &["default browser", "appearance"]),
-];
+/// System Settings panes live in syslinks.rs (data/system_links.toml).
 
 impl Engine {
     pub fn open(opts: Options) -> Result<Engine, String> {
@@ -133,16 +106,21 @@ impl Engine {
 
     fn load_state(opts: &Options) -> State {
         let (config, cfg_err) = Config::load(&opts.data_dir.join("config.toml"));
-        let apps = sources::scan_apps(&sources::app_dirs(&opts.home, &config.app_dirs), &opts.home);
+        let dirs = match &opts.app_roots {
+            Some(v) => v.clone(),
+            None => sources::app_dirs(&opts.home, &config.app_dirs),
+        };
+        let apps = sources::scan_apps(&dirs, &opts.home);
         let (addons, mut errors) = addons::discover(&opts.data_dir.join("addons"));
         errors.extend(cfg_err);
         State { config, apps, addons, errors, refreshed: Instant::now() }
     }
 
     /// Rescan apps, config and add-ons. Cheap; the shell calls it whenever
-    /// the window opens. Skipped if done in the last few seconds.
-    pub fn refresh(&self) {
-        if self.state.read().unwrap().refreshed.elapsed() < Duration::from_secs(5) {
+    /// the window opens. Skipped if done in the last few seconds unless
+    /// `force` (the user just saved settings).
+    pub fn refresh(&self, force: bool) {
+        if !force && self.state.read().unwrap().refreshed.elapsed() < Duration::from_secs(5) {
             return;
         }
         let fresh = Self::load_state(&self.opts);
@@ -219,19 +197,19 @@ impl Engine {
     /// settings JSON (or an error string under "error").
     pub fn write_config(&self, fields: &serde_json::Value) -> serde_json::Value {
         let path = self.opts.data_dir.join("config.toml");
-        let saved = {
-            let st = self.state.read().unwrap();
-            st.config.write_fields(&path, fields)
-        };
-        match saved {
+        match Config::write_fields(&path, fields) {
             Ok(_) => {
-                // Bypass the refresh throttle: the user just saved.
-                self.state.write().unwrap().refreshed = Instant::now() - Duration::from_secs(10);
-                self.refresh();
+                self.refresh(true);
                 self.settings()
             }
             Err(e) => serde_json::json!({ "error": e }),
         }
+    }
+
+    /// Built-in System Settings anchors visible on this OS, for the settings
+    /// window's enable-all toggle.
+    pub fn system_link_anchors(&self) -> Vec<(String, String)> {
+        syslinks::anchors(self.opts.os_major)
     }
 
     fn screenshot_dir(&self) -> PathBuf {
@@ -285,29 +263,32 @@ impl Engine {
                 vec!["exit".into()],
             ),
         ];
-        for (anchor, title, url, pane, keywords) in SYSTEM_LINKS {
-            if st.config.system_links.iter().any(|l| l == anchor) {
-                let mut aliases: Vec<String> = keywords.iter().map(|k| k.to_string()).collect();
-                aliases.push(title.to_lowercase());
-                let action = match url {
-                    Some(u) => Action::OpenUrl { url: format!("x-apple.systempreferences:{u}") },
-                    None => Action::Run {
-                        argv: vec![
-                            "osascript".into(),
-                            "-e".into(),
-                            format!(
-                                "tell application \"System Preferences\"\nactivate\nreveal pane id \"{pane}\"\nend tell"
-                            ),
-                        ],
-                    },
-                };
-                v.push((
-                    Item::new(format!("sys:{anchor}"), *title, action)
-                        .subtitle(format!("System Settings > {title}"))
-                        .icon(sym("gearshape.fill")),
-                    aliases,
-                ));
-            }
+        for e in syslinks::entries(&st.config, self.opts.os_major) {
+            let mut aliases: Vec<String> = e.keywords.clone();
+            aliases.push(e.title.to_lowercase());
+            let action = if e.url {
+                Action::OpenUrl { url: e.target.clone() }
+            } else {
+                // "System Preferences" doesn't exist on macOS 13+; targeting
+                // by bundle id resolves to System Preferences on 12 and
+                // System Settings on 13 and later.
+                Action::Run {
+                    argv: vec![
+                        "osascript".into(),
+                        "-e".into(),
+                        format!(
+                            "tell application id \"com.apple.systempreferences\"\nactivate\nreveal pane id \"{}\"\nend tell",
+                            e.target
+                        ),
+                    ],
+                }
+            };
+            v.push((
+                Item::new(format!("sys:{}", e.anchor), &e.title, action)
+                    .subtitle(format!("System Settings > {}", e.title))
+                    .icon(sym("gearshape.fill")),
+                aliases,
+            ));
         }
         for ql in &st.config.quicklinks {
             let aliases = ql.keyword.iter().cloned().collect();
@@ -492,7 +473,14 @@ mod tests {
             std::fs::create_dir_all(home.join(format!("Applications/{app}.app"))).unwrap();
         }
         std::fs::create_dir_all(home.join("Desktop")).unwrap();
-        let e = Engine::open(Options { data_dir: d.path().join("data"), home, screenshot_dir: None }).unwrap();
+        let e = Engine::open(Options {
+            data_dir: d.path().join("data"),
+            home: home.clone(),
+            screenshot_dir: None,
+            os_major: None,
+            app_roots: Some(vec![home.join("Applications")]),
+        })
+        .unwrap();
         (d, e)
     }
 

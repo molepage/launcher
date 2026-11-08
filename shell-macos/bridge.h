@@ -10,5 +10,6 @@ void lc_picked(const char *query, const char *uid);
 void lc_clipboard_add(const char *text, const char *app);
 void lc_refresh(void);
 char *lc_settings(void);
+char *lc_system_links(void);
 char *lc_write_config(const char *config_json);
 void lc_free(char *s);

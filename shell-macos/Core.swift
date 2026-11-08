@@ -28,14 +28,31 @@ struct Item: Decodable {
 struct Settings: Decodable {
     let hotkey: String
     let clipboardHotkey: String
-    let appDirs: [String]
-    let appearance: String
-    let systemLinks: [String]
-    let fileSearch: Bool
-    let searchDirs: [String]
-    let cat: Bool
     let errors: [String]
-    let dataDir: String
+    // Optional-with-default so a core/shell version mismatch degrades to
+    // defaults instead of failing the whole decode.
+    var appDirs: [String] { appDirs_ ?? [] }
+    var appearance: String { appearance_ ?? "system" }
+    var systemLinks: [String] { systemLinks_ ?? [] }
+    var fileSearch: Bool { fileSearch_ ?? false }
+    var searchDirs: [String] { searchDirs_ ?? [] }
+    var cat: Bool { cat_ ?? true }
+    private let appDirs_: [String]?
+    private let appearance_: String?
+    private let systemLinks_: [String]?
+    private let fileSearch_: Bool?
+    private let searchDirs_: [String]?
+    private let cat_: Bool?
+
+    enum CodingKeys: String, CodingKey {
+        case hotkey, clipboardHotkey, errors
+        case appDirs_ = "appDirs"
+        case appearance_ = "appearance"
+        case systemLinks_ = "systemLinks"
+        case fileSearch_ = "fileSearch"
+        case searchDirs_ = "searchDirs"
+        case cat_ = "cat"
+    }
 }
 
 private struct QueryResult: Decodable {
@@ -62,8 +79,10 @@ enum Core {
 
     /// Returns an error message, or nil on success.
     static func start(dataDir: String, home: String, screenshotDir: String?) -> String? {
-        var opts = ["data_dir": dataDir, "home": home]
+        var opts: [String: Any] = ["data_dir": dataDir, "home": home]
         if let s = screenshotDir { opts["screenshot_dir"] = s }
+        // Gates System Settings entries that only exist in some macOS versions.
+        opts["os_major"] = NSNumber(value: ProcessInfo.processInfo.operatingSystemVersion.majorVersion)
         let json = String(data: try! JSONSerialization.data(withJSONObject: opts), encoding: .utf8)!
         return take(lc_init(json)).flatMap { String(data: $0, encoding: .utf8) }
     }
@@ -91,6 +110,20 @@ enum Core {
     static func settings() -> Settings? {
         guard let d = take(lc_settings()) else { return nil }
         return try? decoder().decode(Settings.self, from: d)
+    }
+
+    /// Anchors of the built-in System Settings entries visible on this OS,
+    /// regardless of the user's selection. The enable-all toggle saves this
+    /// list. Nil if the core is unreachable.
+    static func systemLinkAnchors() -> [String]? {
+        guard let d = take(lc_system_links()),
+              let links = try? decoder().decode([SystemLink].self, from: d) else { return nil }
+        return links.map(\.anchor)
+    }
+
+    private struct SystemLink: Decodable {
+        let anchor: String
+        let title: String
     }
 
     /// Merge fields into config.toml and reload. Returns the fresh settings

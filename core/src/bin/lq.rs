@@ -12,7 +12,7 @@ fn main() {
     };
     let t = Instant::now();
     let shots = home.join("Library/Mobile Documents/com~apple~CloudDocs/Screenshots");
-    let e = Engine::open(Options { data_dir: data, home, screenshot_dir: Some(shots) }).expect("open");
+    let e = Engine::open(Options { data_dir: data, home, screenshot_dir: Some(shots), os_major: None, app_roots: None }).expect("open");
     println!("open: {:?}", t.elapsed());
     while e.settings()["indexed_files"].is_null() {
         std::thread::sleep(std::time::Duration::from_millis(20));

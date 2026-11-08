@@ -1,0 +1,238 @@
+# Built-in deep links into System Settings panes, compiled into the core.
+#
+# Per entry:
+#   anchor    id used in config.toml's `system_links` selection
+#   title     display name (also becomes a search alias)
+#   keywords  extra search aliases
+#   target    the destination: a full `x-apple.systempreferences:` URL
+#             (url = true) or an AppleScript pane id (url = false) for the
+#             few panes that don't support the URL scheme
+#   min_os / max_os  optional macOS major-version gates. Entries whose
+#             target only exists in a macOS generation carry one; targets
+#             kept working by Apple for compatibility stay ungated.
+#
+# When a macOS release moves a pane, add the new target as a second row
+# with the same anchor and a complementary min_os/max_os, or override the
+# entry from config.toml with a [[syslink]] table.
+
+[[entry]]
+anchor = "accessibility"
+title = "Accessibility"
+target = "x-apple.systempreferences:com.apple.preference.security?Privacy_Accessibility"
+url = true
+
+[[entry]]
+anchor = "firewall"
+title = "Firewall"
+target = "x-apple.systempreferences:com.apple.preference.security?Firewall"
+url = true
+
+[[entry]]
+anchor = "filevault"
+title = "FileVault"
+keywords = ["encryption"]
+target = "x-apple.systempreferences:com.apple.preference.security?FDE"
+url = true
+
+[[entry]]
+anchor = "privacy"
+title = "Privacy & Security"
+keywords = ["privacy", "permissions", "camera", "microphone"]
+target = "x-apple.systempreferences:com.apple.preference.security"
+url = true
+
+[[entry]]
+anchor = "notifications"
+title = "Notifications"
+keywords = ["focus", "do not disturb"]
+target = "x-apple.systempreferences:com.apple.preference.notifications"
+url = true
+
+# The Login Items pane only exists since Ventura; on Monterey it lives in
+# Users & Groups.
+[[entry]]
+anchor = "login_items"
+title = "Login Items"
+keywords = ["startup"]
+target = "x-apple.systempreferences:com.apple.LoginItems-Settings.extension"
+url = true
+min_os = 13
+
+[[entry]]
+anchor = "battery"
+title = "Battery"
+keywords = ["energy", "power"]
+target = "x-apple.systempreferences:com.apple.preference.battery"
+url = true
+
+[[entry]]
+anchor = "softwareupdate"
+title = "Software Update"
+keywords = ["update"]
+target = "x-apple.systempreferences:com.apple.preferences.softwareupdate"
+url = true
+
+[[entry]]
+anchor = "touchid"
+title = "Touch ID & Password"
+keywords = ["touch id", "password", "apple watch"]
+target = "x-apple.systempreferences:com.apple.preferences.password"
+url = true
+
+[[entry]]
+anchor = "sharing"
+title = "Sharing"
+keywords = ["share", "airdrop"]
+target = "x-apple.systempreferences:com.apple.preferences.sharing"
+url = true
+
+[[entry]]
+anchor = "screentime"
+title = "Screen Time"
+target = "x-apple.systempreferences:com.apple.preference.screentime"
+url = true
+
+[[entry]]
+anchor = "siri"
+title = "Siri"
+target = "x-apple.systempreferences:com.apple.preference.speech"
+url = true
+
+[[entry]]
+anchor = "language"
+title = "Language & Region"
+keywords = ["language", "region"]
+target = "x-apple.systempreferences:com.apple.Localization"
+url = true
+
+# The standalone Passwords pane arrived with macOS 13.4.
+[[entry]]
+anchor = "passwords"
+title = "Passwords"
+target = "x-apple.systempreferences:com.apple.Passwords"
+url = true
+min_os = 13
+
+[[entry]]
+anchor = "profiles"
+title = "Profiles"
+keywords = ["mdm"]
+target = "x-apple.systempreferences:com.apple.preferences.configurationprofiles"
+url = true
+
+[[entry]]
+anchor = "spotlight"
+title = "Spotlight"
+keywords = ["search", "exclusion"]
+target = "com.apple.preference.spotlight"
+url = false
+
+[[entry]]
+anchor = "network"
+title = "Network"
+keywords = ["wifi", "wi-fi", "vpn", "ethernet", "dns"]
+target = "com.apple.preference.network"
+url = false
+
+[[entry]]
+anchor = "bluetooth"
+title = "Bluetooth"
+target = "com.apple.preferences.Bluetooth"
+url = false
+
+[[entry]]
+anchor = "sound"
+title = "Sound"
+keywords = ["audio", "volume", "output", "input"]
+target = "com.apple.preference.sound"
+url = false
+
+[[entry]]
+anchor = "displays"
+title = "Displays"
+keywords = ["monitor", "screen", "brightness", "resolution"]
+target = "com.apple.preference.displays"
+url = false
+
+[[entry]]
+anchor = "keyboard"
+title = "Keyboard"
+keywords = ["shortcuts", "text replacement"]
+target = "com.apple.preference.keyboard"
+url = false
+
+[[entry]]
+anchor = "mouse"
+title = "Mouse"
+target = "com.apple.preference.mouse"
+url = false
+
+[[entry]]
+anchor = "trackpad"
+title = "Trackpad"
+keywords = ["gesture"]
+target = "com.apple.preference.trackpad"
+url = false
+
+[[entry]]
+anchor = "printer"
+title = "Printers & Scanners"
+keywords = ["printer", "scanner", "print"]
+target = "com.apple.preference.printfax"
+url = false
+
+[[entry]]
+anchor = "screensaver"
+title = "Screen Saver"
+keywords = ["screensaver", "desktop", "wallpaper"]
+target = "com.apple.preference.desktopscreeneffect"
+url = false
+
+[[entry]]
+anchor = "dock"
+title = "Dock & Menu Bar"
+keywords = ["dock", "menu bar", "hot corners"]
+target = "com.apple.preference.dock"
+url = false
+
+[[entry]]
+anchor = "missioncontrol"
+title = "Mission Control"
+keywords = ["mission control", "spaces", "hot corners"]
+target = "com.apple.preference.expose"
+url = false
+
+[[entry]]
+anchor = "datetime"
+title = "Date & Time"
+keywords = ["clock", "date", "time", "timezone"]
+target = "com.apple.preference.datetime"
+url = false
+
+[[entry]]
+anchor = "timemachine"
+title = "Time Machine"
+keywords = ["backup"]
+target = "com.apple.prefs.backup"
+url = false
+
+[[entry]]
+anchor = "startupdisk"
+title = "Startup Disk"
+keywords = ["boot", "startup disk"]
+target = "com.apple.preference.startupdisk"
+url = false
+
+[[entry]]
+anchor = "users"
+title = "Users & Groups"
+keywords = ["users", "groups", "account"]
+target = "com.apple.preferences.users"
+url = false
+
+[[entry]]
+anchor = "general"
+title = "General"
+keywords = ["default browser", "appearance"]
+target = "com.apple.preference.general"
+url = false

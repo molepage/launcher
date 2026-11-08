@@ -4,42 +4,6 @@
 
 import AppKit
 
-/// Mirrors the anchors/titles of core/src/engine.rs SYSTEM_LINKS.
-private let SYSTEM_LINKS: [(String, String)] = [
-    ("accessibility", "Accessibility"),
-    ("firewall", "Firewall"),
-    ("filevault", "FileVault"),
-    ("privacy", "Privacy & Security"),
-    ("notifications", "Notifications"),
-    ("login_items", "Login Items"),
-    ("battery", "Battery"),
-    ("softwareupdate", "Software Update"),
-    ("touchid", "Touch ID & Password"),
-    ("sharing", "Sharing"),
-    ("screentime", "Screen Time"),
-    ("siri", "Siri"),
-    ("language", "Language & Region"),
-    ("passwords", "Passwords"),
-    ("profiles", "Profiles"),
-    ("spotlight", "Spotlight"),
-    ("network", "Network"),
-    ("bluetooth", "Bluetooth"),
-    ("sound", "Sound"),
-    ("displays", "Displays"),
-    ("keyboard", "Keyboard"),
-    ("mouse", "Mouse"),
-    ("trackpad", "Trackpad"),
-    ("printer", "Printers & Scanners"),
-    ("screensaver", "Screen Saver"),
-    ("dock", "Dock & Menu Bar"),
-    ("missioncontrol", "Mission Control"),
-    ("datetime", "Date & Time"),
-    ("timemachine", "Time Machine"),
-    ("startupdisk", "Startup Disk"),
-    ("users", "Users & Groups"),
-    ("general", "General"),
-]
-
 /// Click to record a shortcut. Emits the same "cmd+shift+v" spec format
 /// the config uses.
 final class HotkeyRecorder: NSView {
@@ -129,8 +93,9 @@ final class HotkeyRecorder: NSView {
         if f.contains(.control) { parts.append("ctrl") }
         if f.contains(.shift) { parts.append("shift") }
         // Bare letter/number shortcuts would swallow normal typing; function
-        // keys are fine alone.
-        if parts.isEmpty, !name.hasPrefix("f") { return NSSound.beep() }
+        // keys are fine alone. (Note: the letter F is named "f", the function
+        // keys are "f1"…"f12" — hence the exact pattern, not hasPrefix.)
+        if parts.isEmpty, name.range(of: "^f\\d+$", options: .regularExpression) == nil { return NSSound.beep() }
         spec = (parts + [name]).joined(separator: "+")
         window?.makeFirstResponder(nil)
         onChange?(spec)
@@ -210,7 +175,15 @@ final class SettingsWindowController: NSWindowController, NSWindowDelegate, NSTa
 
     private func rebuild() {
         settings = Core.settings()
-        guard let s = settings else { return }
+        guard let s = settings else {
+            // Decode/unreachable failure: show why instead of a blank window.
+            let l = NSTextField(labelWithString: "Couldn’t read settings from the launcher core.\nQuit Launcher and reopen it; if that fails, check config.toml.")
+            l.font = .systemFont(ofSize: 13)
+            l.textColor = .secondaryLabelColor
+            l.frame = NSRect(x: 20, y: 280, width: 430, height: 40)
+            window?.contentView = l
+            return
+        }
         folders = s.appDirs
         searchDirs = s.searchDirs
         let content = NSView(frame: NSRect(x: 0, y: 0, width: 470, height: 600))
@@ -246,12 +219,14 @@ final class SettingsWindowController: NSWindowController, NSWindowDelegate, NSTa
         section("Hotkeys")
         let row1 = reserve(28)
         launchRecorder = addHotkeyRow(in: content, spec: s.hotkey) { [weak self] spec in
+            guard spec != self?.clipRecorder?.spec else { return NSSound.beep() }  // conflict: second registration would silently fail
             self?.save(["hotkey": spec], then: { self?.reapplyHotkeys?() })
         }
         launchRecorder?.frame = NSRect(x: 270, y: row1, width: 180, height: 26)
         hotkeyLabel("Open launcher", at: row1, in: content)
         let row2 = reserve(28)
         clipRecorder = addHotkeyRow(in: content, spec: s.clipboardHotkey) { [weak self] spec in
+            guard spec != self?.launchRecorder?.spec else { return NSSound.beep() }
             self?.save(["clipboard_hotkey": spec], then: { self?.reapplyHotkeys?() })
         }
         clipRecorder?.frame = NSRect(x: 270, y: row2, width: 180, height: 26)
@@ -345,9 +320,13 @@ final class SettingsWindowController: NSWindowController, NSWindowDelegate, NSTa
     }
 
     private func folderList(height: CGFloat, items: [String], tv: NSTableView) -> NSView {
-        let col = NSTableColumn(identifier: .init("path"))
-        col.width = 380
-        tv.addTableColumn(col)
+        // Tables are reused across rebuilds (every settings reopen); only add
+        // the column the first time or columns would accumulate.
+        if tv.tableColumns.isEmpty {
+            let col = NSTableColumn(identifier: .init("path"))
+            col.width = 380
+            tv.addTableColumn(col)
+        }
         tv.headerView = nil
         tv.dataSource = self
         tv.delegate = self
@@ -410,8 +389,18 @@ final class SettingsWindowController: NSWindowController, NSWindowDelegate, NSTa
     }
 
     @objc private func systemToggleChanged(_ sender: NSSwitch) {
-        let links = sender.state == .on ? SYSTEM_LINKS.map(\.0) : []
-        save(["system_links": links], then: { Core.refresh() })
+        if sender.state == .on {
+            // The anchor list comes from the core (one source of truth), so
+            // panes added there appear here without touching the shell.
+            guard let anchors = Core.systemLinkAnchors(), !anchors.isEmpty else {
+                sender.state = .off
+                NSSound.beep()
+                return
+            }
+            save(["system_links": anchors], then: { Core.refresh() })
+        } else {
+            save(["system_links": []], then: { Core.refresh() })
+        }
     }
 
     @objc private func catToggled(_ sender: NSSwitch) {

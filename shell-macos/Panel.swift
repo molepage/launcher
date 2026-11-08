@@ -264,7 +264,8 @@ final class PanelController: NSObject, NSTextFieldDelegate, NSWindowDelegate, NS
 
     func show(prefill: String = "") {
         DispatchQueue.global(qos: .utility).async { Core.refresh() }
-        applyAppearance(Core.settings()?.appearance ?? "system")
+        let s = Core.settings()  // one FFI round trip feeds everything below
+        applyAppearance(s?.appearance ?? "system")
         let mouse = NSEvent.mouseLocation
         let screen = NSScreen.screens.first { NSMouseInRect(mouse, $0.frame, false) } ?? NSScreen.main
         // Only auto-position on the first show; afterwards keep wherever the
@@ -276,7 +277,7 @@ final class PanelController: NSObject, NSTextFieldDelegate, NSWindowDelegate, NS
                            display: false)
         }
         setQuery(prefill)
-        applyCat(enabled: Core.settings()?.cat ?? true)
+        applyCat(enabled: s?.cat ?? true)
         positionCat()
         panel.makeKeyAndOrderFront(nil)
         panel.makeFirstResponder(field)
@@ -319,8 +320,9 @@ final class PanelController: NSObject, NSTextFieldDelegate, NSWindowDelegate, NS
     private var snapshotting = false
 
     func windowDidResignKey(_ notification: Notification) {
-        // Stay visible while the settings window is up.
-        if SettingsWindowController.shared.window?.isVisible == true { return }
+        // Stay visible while the settings window has focus — but hide when
+        // the whole app is backgrounded, settings window or not.
+        if NSApp.isActive, SettingsWindowController.shared.window?.isVisible == true { return }
         if !snapshotting { hide() }
     }
 

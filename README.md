@@ -44,8 +44,7 @@ is copied and you press ⌘V yourself.
 
 `~/Library/Application Support/Launcher/config.toml` is created on first
 run. It holds hotkeys, extra app folders and quicklinks. Type `settings` in
-the launcher to open it. Hotkey changes need a restart ("Quit Launcher",
-then open it again).
+the launcher to open it.
 
 ## Changes from the original launcher
 
