@@ -82,6 +82,7 @@ final class PanelController: NSObject, NSTextFieldDelegate, NSWindowDelegate, NS
     private var slowWork: DispatchWorkItem?
     private var lastWasSlow = false
     private var hasPositioned = false
+    private var screenObserver: NSObjectProtocol?
     private var catWindow: NSWindow!
 
     private let width: CGFloat = 700
@@ -188,6 +189,39 @@ final class PanelController: NSObject, NSTextFieldDelegate, NSWindowDelegate, NS
         content.addSubview(results)
 
         Icons.shared.onUpdate = { [weak self] in self?.results.needsDisplay = true }
+
+        // Displays can come and go; never let the panel end up on a dead one.
+        screenObserver = NotificationCenter.default.addObserver(
+            forName: NSApplication.didChangeScreenParametersNotification,
+            object: nil, queue: .main
+        ) { [weak self] _ in self?.ensureOnScreen() }
+    }
+
+    deinit {
+        if let observer = screenObserver { NotificationCenter.default.removeObserver(observer) }
+    }
+
+    /// Keep the panel on a live screen: reposition entirely if its frame no
+    /// longer intersects any display (e.g. the monitor it sat on was
+    /// unplugged), otherwise clamp it back inside the visible frame.
+    private func ensureOnScreen() {
+        guard let screen = NSScreen.screens.first(where: { $0.frame.intersects(panel.frame) })
+                ?? NSScreen.screens.first(where: { NSMouseInRect(NSEvent.mouseLocation, $0.frame, false) })
+                ?? NSScreen.main else { return }
+        let vf = screen.visibleFrame
+        let f = panel.frame
+        if NSScreen.screens.contains(where: { $0.frame.intersects(f) }) {
+            let x = min(max(f.minX, vf.minX + 8), max(vf.minX + 8, vf.maxX - f.width - 8))
+            let y = min(max(f.minY, vf.minY + 8), max(vf.minY + 8, vf.maxY - f.height - 8))
+            if x != f.minX || y != f.minY {
+                panel.setFrameOrigin(NSPoint(x: x, y: y))
+                positionCat()
+            }
+        } else {
+            let top = vf.maxY - vf.height * 0.2
+            panel.setFrameOrigin(NSPoint(x: vf.midX - f.width / 2, y: top - f.height))
+            positionCat()
+        }
     }
 
     // MARK: gear menu
@@ -277,6 +311,7 @@ final class PanelController: NSObject, NSTextFieldDelegate, NSWindowDelegate, NS
                            display: false)
         }
         setQuery(prefill)
+        ensureOnScreen()
         applyCat(enabled: s?.cat ?? true)
         positionCat()
         panel.makeKeyAndOrderFront(nil)
