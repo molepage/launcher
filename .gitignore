@@ -4,3 +4,6 @@
 
 # Private research notes
 /docs/research/
+
+# Command Code local settings
+/.commandcode/
